@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="twilight-indigo">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AdGen</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // This script configures Tailwind CSS to use our custom theme colors by referencing CSS variables.
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            background: 'var(--background)',
+            surface: 'var(--surface)',
+            muted: 'var(--muted)',
+            'primary-text': 'var(--primary-text)',
+            'secondary-text': 'var(--secondary-text)',
+            primary: 'var(--primary)',
+            'primary-focus': 'var(--primary-focus)',
+            'primary-content': 'var(--primary-content)',
+            accent: 'var(--accent)',
+            error: 'var(--error)',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* 
+      These are the color definitions for our three themes.
+      The theme is controlled by the 'data-theme' attribute on the <html> tag.
+      Tailwind's config (above) uses these CSS variables.
+    */
+    :root[data-theme='twilight-indigo'] {
+      --background: #1a202c; /* slate-900 */
+      --surface: #2d3748; /* slate-800 */
+      --muted: #4a5568; /* slate-700 */
+      --primary-text: #edf2f7; /* slate-200 */
+      --secondary-text: #a0aec0; /* slate-400 */
+      --primary: #805ad5; /* purple-600 */
+      --primary-focus: #6b46c1; /* purple-700 */
+      --primary-content: #ffffff;
+      --accent: #38b2ac; /* teal-500 */
+      --error: #f56565; /* red-500 */
+    }
+    :root[data-theme='sunrise-coral'] {
+      --background: #2c2c2c;
+      --surface: #404040;
+      --muted: #5a5a5a;
+      --primary-text: #ffffff;
+      --secondary-text: #b0b0b0;
+      --primary: #ff7f50; /* coral */
+      --primary-focus: #ff6347; /* tomato */
+      --primary-content: #2c2c2c;
+      --accent: #f0e68c; /* khaki */
+      --error: #ff4757; /* red */
+    }
+    :root[data-theme='oceanic-teal'] {
+      --background: #f0f9ff; /* sky-50 */
+      --surface: #ffffff;
+      --muted: #e0f2fe; /* sky-100 */
+      --primary-text: #082f49; /* sky-950 */
+      --secondary-text: #334155; /* slate-700 */
+      --primary: #0d9488; /* teal-600 */
+      --primary-focus: #0f766e; /* teal-700 */
+      --primary-content: #ffffff;
+      --accent: #0ea5e9; /* sky-500 */
+      --error: #dc2626; /* red-600 */
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://aistudiocdn.com/react@^19.1.1",
+      "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
+      "react/": "https://aistudiocdn.com/react@^19.1.1/",
+      "@google/genai": "https://aistudiocdn.com/@google/genai@^1.17.0"
+    }
+  }
+  </script>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+{
+  "name": "AdGen",
+  "description": "An application that uses AI to localize an image into different languages and cultural contexts. Upload an image, and the AI will adapt signage and text to match selected countries like the UK or USA.",
+  "requestFramePermissions": []
+}
