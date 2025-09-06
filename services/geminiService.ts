@@ -31,6 +31,63 @@ const fileToGenerativePart = async (file: File) => {
   };
 };
 
+/**
+ * A robust, client-side function to resize a base64 image to exact dimensions using the Canvas API.
+ * This performs a "center crop" to ensure the canvas is filled without distorting the image.
+ * @param base64Src The source image as a full data URI (e.g., "data:image/png;base64,...").
+ * @param mimeType The desired output MIME type.
+ * @param width The target width in pixels.
+ * @param height The target height in pixels.
+ * @returns A promise that resolves with the new, resized base64 data URI.
+ */
+const forceResizeImage = (base64Src: string, mimeType: string, width: number, height: number): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        return reject(new Error('Could not get canvas context'));
+      }
+
+      // Implement a "center crop" (object-fit: cover) logic
+      const imgAspectRatio = img.width / img.height;
+      const canvasAspectRatio = width / height;
+      let renderableWidth, renderableHeight, xStart, yStart;
+
+      if (imgAspectRatio < canvasAspectRatio) {
+        // Image is taller than canvas, so fit width and crop height
+        renderableWidth = width;
+        renderableHeight = renderableWidth / imgAspectRatio;
+        xStart = 0;
+        yStart = (height - renderableHeight) / 2;
+      } else if (imgAspectRatio > canvasAspectRatio) {
+        // Image is wider than canvas, so fit height and crop width
+        renderableHeight = height;
+        renderableWidth = renderableHeight * imgAspectRatio;
+        yStart = 0;
+        xStart = (width - renderableWidth) / 2;
+      } else {
+        // Aspect ratios are the same
+        renderableWidth = width;
+        renderableHeight = height;
+        xStart = 0;
+        yStart = 0;
+      }
+
+      ctx.drawImage(img, xStart, yStart, renderableWidth, renderableHeight);
+      
+      resolve(canvas.toDataURL(mimeType));
+    };
+    img.onerror = (error) => reject(error);
+    img.src = base64Src;
+  });
+};
+
+
 export const localizeImage = async (
   imageFile: File,
   locales: string[],
@@ -40,94 +97,53 @@ export const localizeImage = async (
   const originalImagePart = await fileToGenerativePart(imageFile);
   const localeMap = new Map(AVAILABLE_LOCALES.map(l => [l.id, l]));
   const adSizeMap = new Map(GOOGLE_AD_SIZES.map(s => [s.id, s]));
-
   const results: LocalizedImageResult[] = [];
+  
+  if (adSizes.length === 0) return [];
 
-  // Sort ad sizes by total pixels (descending) to generate the highest-resolution one first.
-  // This will become the "master" localized image for the current locale.
+  // Sort ad sizes to determine the largest one to use as the high-quality source.
   const sortedAdSizes = [...adSizes].sort((a, b) => {
     const [widthA, heightA] = a.split('x').map(Number);
     const [widthB, heightB] = b.split('x').map(Number);
     return (widthB * heightB) - (widthA * heightA);
   });
+  
+  const masterSize = sortedAdSizes[0];
+  const [masterWidth, masterHeight] = masterSize.split('x').map(Number);
 
-  // Process each selected locale.
   for (const localeId of locales) {
     const locale = localeMap.get(localeId);
     if (!locale) continue;
 
-    const adImages: AdImage[] = [];
-    let masterLocalizedImagePart: any = null; // This will store the generated master image for the locale.
-
-    // For each locale, generate an ad for each selected size.
-    for (const sizeId of sortedAdSizes) {
-      const adSize = adSizeMap.get(sizeId);
-      if (!adSize) continue;
-
-      const [width, height] = sizeId.split('x').map(Number);
-      
-      let prompt: string;
-      let inputImagePart: any;
-
-      if (!masterLocalizedImagePart) {
-        // This is the first and largest image. Generate it from the original user-uploaded image.
-        // This generated image will become the "master" for this locale.
-        inputImagePart = originalImagePart;
-        prompt = `
+    // STEP 1: Generate ONE high-resolution, localized master image from the AI.
+    const masterPrompt = `
 **CRITICAL TASK: Generate a Master Localized Advertisement Image**
 
 You MUST follow these steps in order.
 
 **Step 1: Set Final Image Dimensions (MANDATORY)**
-- The final output image MUST be exactly ${width} pixels wide by ${height} pixels high. This is a non-negotiable directive.
+- The final output image MUST be exactly ${masterWidth} pixels wide by ${masterHeight} pixels high. This is a non-negotiable directive.
 
 **Step 2: Transform the Scene**
-- Change the background of the provided image to a new, authentic scene from ${locale.country}. This new scene will be the master background for all other assets.
+- Change the background of the provided image to a new, authentic scene from ${locale.country}.
 
 **Step 3: Create the CTA Banner**
 - Add a solid rectangular banner with the exact hex color #805ad5 at the absolute bottom of the image, spanning the full width.
-- The banner's height MUST be exactly 2/5ths of the image height (${Math.round(height * 2 / 5)}px).
+- The banner's height MUST be exactly 2/5ths of the image height (${Math.round(masterHeight * 2 / 5)}px).
 
 **Step 4: Add the CTA Text**
 - Translate the following text to ${locale.language}: "${adText}".
 - Place the translated text (bold, white, centered) inside the banner.
 
-**Final Check:** The output must be a single image of size ${width}x${height}.
+**Final Check:** The output must be a single image of size ${masterWidth}x${masterHeight}.
 `;
-      } else {
-        // This is a subsequent, smaller image. Generate it from the "master" localized image.
-        inputImagePart = masterLocalizedImagePart;
-        prompt = `
-**CRITICAL TASK: Adapt an Existing Localized Image**
 
-You MUST follow these steps in order.
-
-**Step 1: Set Final Image Dimensions (MANDATORY)**
-- The final output image MUST be exactly ${width} pixels wide by ${height} pixels high.
-- You must resize or crop the provided image to these new dimensions.
-
-**Step 2: Preserve the Scene (MANDATORY)**
-- **DO NOT CHANGE THE SCENE or background.** The existing scenery is correct. Your only task is to resize and ensure the banner is correct.
-
-**Step 3: Re-apply the CTA Banner**
-- Ensure a solid rectangular banner with the exact hex color #805ad5 is at the absolute bottom of the image.
-- The banner's height MUST be exactly 2/5ths of the new image height (${Math.round(height * 2 / 5)}px).
-- The banner's width MUST match the new image width (${width}px).
-
-**Step 4: Re-apply the CTA Text**
-- The banner must contain the text "${adText}" translated to ${locale.language}.
-- The text MUST be bold, white, and centered within the banner.
-
-**Final Check:** The output must be a single image of size ${width}x${height} with the original scene preserved.
-`;
-      }
-
-      const response = await ai.models.generateContent({
+    const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image-preview',
         contents: {
           parts: [
-            inputImagePart,
-            { text: prompt },
+            originalImagePart,
+            { text: masterPrompt },
           ],
         },
         config: {
@@ -135,50 +151,48 @@ You MUST follow these steps in order.
         },
       });
 
-      let imageData: string | null = null;
-      let imageMimeType: string = 'image/png';
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            imageData = part.inlineData.data;
-            imageMimeType = part.inlineData.mimeType;
-            break;
-          }
-        }
-      }
-
-      if (imageData) {
-        adImages.push({
-          size: sizeId,
-          name: adSize.name,
-          imageUrl: `data:${imageMimeType};base64,${imageData}`,
-        });
-
-        if (!masterLocalizedImagePart) {
-          // The first successful generation becomes the master for this locale.
-          masterLocalizedImagePart = {
-            inlineData: {
-              data: imageData,
-              mimeType: imageMimeType,
-            },
-          };
+    let masterImageData: string | null = null;
+    let masterImageMimeType: string = 'image/png';
+    if (response.candidates?.[0]?.content?.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          masterImageData = part.inlineData.data;
+          masterImageMimeType = part.inlineData.mimeType;
+          break;
         }
       }
     }
 
-    // Re-sort the generated images to match the user's original selection order.
-    const sortedAdImagesToOriginalOrder = adImages.sort((a, b) => {
-        const indexA = adSizes.indexOf(a.size);
-        const indexB = adSizes.indexOf(b.size);
-        return indexA - indexB;
-    });
+    if (masterImageData) {
+      const adImages: AdImage[] = [];
+      const masterImageSrc = `data:${masterImageMimeType};base64,${masterImageData}`;
 
-    if (adImages.length > 0) {
-      results.push({
-        id: localeId,
-        localeName: locale.name,
-        adImages: sortedAdImagesToOriginalOrder,
-      });
+      // STEP 2: Use client-side resizing to generate all required ad sizes from the master.
+      // This is faster, cheaper, and guarantees exact dimensions.
+      for (const sizeId of adSizes) {
+        const adSize = adSizeMap.get(sizeId);
+        if (!adSize) continue;
+        const [width, height] = sizeId.split('x').map(Number);
+        
+        try {
+          const resizedImageUrl = await forceResizeImage(masterImageSrc, masterImageMimeType, width, height);
+          adImages.push({
+            size: sizeId,
+            name: adSize.name,
+            imageUrl: resizedImageUrl,
+          });
+        } catch(e) {
+            console.error(`Failed to resize image for size ${sizeId}`, e);
+        }
+      }
+
+      if (adImages.length > 0) {
+        results.push({
+          id: localeId,
+          localeName: locale.name,
+          adImages,
+        });
+      }
     }
   }
 
